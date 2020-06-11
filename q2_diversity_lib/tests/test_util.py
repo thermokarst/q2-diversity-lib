@@ -7,7 +7,6 @@
 # ----------------------------------------------------------------------------
 
 import unittest.mock as mock
-from unittest.mock import MagicMock
 
 import numpy as np
 import biom
@@ -125,7 +124,7 @@ class ValidateRequestedCPUsTests(TestPluginBase):
     @mock.patch('psutil.cpu_count', return_value=999)
     def test_system_has_no_cpu_affinity(self, mock_cpu_count, mock_process):
         mock_process = psutil.Process()
-        mock_process.cpu_affinity = MagicMock(side_effect=AttributeError)
+        mock_process.cpu_affinity = mock.MagicMock(side_effect=AttributeError)
         self.assertEqual(self.function_w_n_jobs_param(999), 999)
         assert mock_process.cpu_affinity.called
 
