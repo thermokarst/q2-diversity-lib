@@ -73,3 +73,7 @@ node_modules
 
 # VSCode dotfiles
 .vscode/*
+*.code-workspace
+
+# project notes
+notes/
