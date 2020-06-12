@@ -10,6 +10,14 @@ jobs:
   debug:
     runs-on: macos-latest
     steps:
+    - name: set up python 3.6
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.6
+    - name: install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install psutil
     - name: DEBUG PSUTIL
       run: |
         python -c "import psutil; print('logical==True', psutil.cpu_count(logical=True))"
