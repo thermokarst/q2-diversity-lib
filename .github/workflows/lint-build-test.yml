@@ -7,6 +7,14 @@ on:
       - master
 
 jobs:
+  debug:
+    runs-on: macos-latest
+    steps:
+    - name: DEBUG PSUTIL
+      run: |
+        python -c "import psutil; print('logical==True', psutil.cpu_count(logical=True))"
+        python -c "import psutil; print('logical==False', psutil.cpu_count(logical=False))"
+ 
   lint:
     runs-on: ubuntu-latest
     steps:
