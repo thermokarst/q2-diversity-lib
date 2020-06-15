@@ -6,13 +6,13 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 
-import unittest.mock as mock
-from unittest.mock import MagicMock
+from unittest import mock
 
 import numpy as np
 import biom
 import psutil
 
+from qiime2 import Artifact
 from qiime2.plugin.testing import TestPluginBase
 from q2_types.feature_table import BIOMV210Format
 from q2_types.tree import NewickFormat
@@ -96,13 +96,29 @@ class ValidateRequestedCPUsTests(TestPluginBase):
             pass
         self.function_w_both = function_w_duplicate_params
 
-        valid_table_fp = self.get_data_path('two_feature_table.biom')
-        self.valid_table_as_BIOMV210Format = BIOMV210Format(valid_table_fp,
-                                                            mode='r')
-        self.valid_table = biom.load_table(valid_table_fp)
+        self.jaccard_thru_framework = self.plugin.actions['jaccard']
+        self.unweighted_unifrac_thru_framework = self.plugin.actions[
+                    'unweighted_unifrac']
+
+        two_feature_table_fp = self.get_data_path('two_feature_table.biom')
+        self.two_feature_table = biom.load_table(two_feature_table_fp)
+        self.two_feature_table_as_BIOMV210Format = BIOMV210Format(
+                two_feature_table_fp, mode='r')
+        self.two_feature_table_as_artifact = Artifact.import_data(
+                    'FeatureTable[Frequency]', two_feature_table_fp)
+
+        larger_table_fp = self.get_data_path('crawford.biom')
+        self.larger_table_as_artifact = Artifact.import_data(
+                'FeatureTable[Frequency]', larger_table_fp)
 
         valid_tree_fp = self.get_data_path('three_feature.tree')
         self.valid_tree_as_NewickFormat = NewickFormat(valid_tree_fp, mode='r')
+        self.valid_tree_as_artifact = Artifact.import_data(
+                'Phylogeny[Rooted]', valid_tree_fp)
+
+        larger_tree_fp = self.get_data_path('crawford.nwk')
+        self.larger_tree_as_artifact = Artifact.import_data(
+                'Phylogeny[Rooted]', larger_tree_fp)
 
     def test_function_without_cpu_request_param(self):
         with self.assertRaisesRegex(TypeError, 'without.*n_jobs.*threads'):
@@ -125,7 +141,7 @@ class ValidateRequestedCPUsTests(TestPluginBase):
     @mock.patch('psutil.cpu_count', return_value=999)
     def test_system_has_no_cpu_affinity(self, mock_cpu_count, mock_process):
         mock_process = psutil.Process()
-        mock_process.cpu_affinity = MagicMock(side_effect=AttributeError)
+        mock_process.cpu_affinity = mock.MagicMock(side_effect=AttributeError)
         self.assertEqual(self.function_w_n_jobs_param(999), 999)
         assert mock_process.cpu_affinity.called
 
@@ -158,3 +174,38 @@ class ValidateRequestedCPUsTests(TestPluginBase):
         self.assertEqual(self.function_w_n_jobs_param(n_jobs='auto'), 3)
         self.assertEqual(self.function_w_threads_param('auto'), 3)
         self.assertEqual(self.function_w_threads_param(threads='auto'), 3)
+
+    @mock.patch("q2_diversity_lib._util.psutil.Process")
+    def test_cpu_request_through_framework(self, mock_process):
+        mock_process = psutil.Process()
+        mock_process.cpu_affinity = mock.MagicMock(return_value=[0])
+
+        self.jaccard_thru_framework(self.larger_table_as_artifact, n_jobs=1)
+        self.jaccard_thru_framework(self.larger_table_as_artifact,
+                                    n_jobs='auto')
+        self.unweighted_unifrac_thru_framework(self.larger_table_as_artifact,
+                                               self.larger_tree_as_artifact,
+                                               threads=1)
+        self.unweighted_unifrac_thru_framework(self.larger_table_as_artifact,
+                                               self.larger_tree_as_artifact,
+                                               threads='auto')
+        # If we get here, then it ran without error
+        self.assertTrue(True)
+
+    @mock.patch("q2_diversity_lib._util.psutil.Process")
+    def test_more_threads_than_max_stripes(self, mock_process):
+        mock_process = psutil.Process()
+        mock_process.cpu_affinity = mock.MagicMock(return_value=[0])
+
+        # The two_feature_table used here has only three samples, meaning
+        # that it has a max of (3+1)/2 = 2 stripes. Unifrac may report
+        # requests of more-threads-than-stripes to stderror, but should handle
+        # that situation gracefully.
+        self.unweighted_unifrac_thru_framework(
+                self.two_feature_table_as_artifact,
+                self.valid_tree_as_artifact, threads=1)
+        self.unweighted_unifrac_thru_framework(
+                self.two_feature_table_as_artifact,
+                self.valid_tree_as_artifact, threads='auto')
+        # If we get here, then it ran without error
+        self.assertTrue(True)

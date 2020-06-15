@@ -5,7 +5,6 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
-
 import numpy as np
 import numpy.testing as npt
 import biom
@@ -238,9 +237,16 @@ class UnweightedUnifrac(TestPluginBase):
         p_a_table_fp = self.get_data_path('two_feature_p_a_table.biom')
         self.p_a_table_as_BIOMV210Format = BIOMV210Format(p_a_table_fp,
                                                           mode='r')
+        self.table_as_artifact = Artifact.import_data(
+                    'FeatureTable[Frequency]', self.table_as_BIOMV210Format)
 
         tree_fp = self.get_data_path('three_feature.tree')
         self.tree_as_NewickFormat = NewickFormat(tree_fp, mode='r')
+        self.tree_as_artifact = Artifact.import_data(
+                    'Phylogeny[Rooted]', self.tree_as_NewickFormat)
+
+        self.unweighted_unifrac_thru_framework = self.plugin.actions[
+                    'unweighted_unifrac']
 
     def test_method(self):
         actual = unweighted_unifrac(self.table_as_BIOMV210Format,
@@ -266,14 +272,8 @@ class UnweightedUnifrac(TestPluginBase):
                                             self.expected[id1, id2])
 
     def test_does_it_run_through_framework(self):
-        unweighted_unifrac_thru_framework = self.plugin.actions[
-                    'unweighted_unifrac']
-        table_as_artifact = Artifact.import_data(
-                    'FeatureTable[Frequency]', self.table_as_BIOMV210Format)
-        tree_as_artifact = Artifact.import_data(
-                    'Phylogeny[Rooted]', self.tree_as_NewickFormat)
-        unweighted_unifrac_thru_framework(table_as_artifact,
-                                          tree_as_artifact)
+        self.unweighted_unifrac_thru_framework(self.table_as_artifact,
+                                               self.tree_as_artifact)
         # If we get here, then it ran without error
         self.assertTrue(True)
 
