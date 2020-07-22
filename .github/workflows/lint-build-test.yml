@@ -39,4 +39,5 @@ jobs:
     - uses: qiime2/action-library-packaging@alpha1
       with: 
         plugin-name: q2-diversity-lib
+        build-target: staging
         additional-tests: pytest --pyargs q2_diversity_lib --capture=tee-sys
