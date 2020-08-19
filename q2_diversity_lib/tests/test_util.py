@@ -11,13 +11,12 @@ from unittest import mock
 import numpy as np
 import biom
 import psutil
-
 from qiime2 import Artifact
 from qiime2.plugin.testing import TestPluginBase
 from q2_types.feature_table import BIOMV210Format
 from q2_types.tree import NewickFormat
-from .._util import (_disallow_empty_tables,
-                     _validate_requested_cpus)
+
+from .._util import _disallow_empty_tables, _validate_requested_cpus
 
 
 class DisallowEmptyTablesTests(TestPluginBase):

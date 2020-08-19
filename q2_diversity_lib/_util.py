@@ -15,18 +15,14 @@ import biom
 
 from q2_types.feature_table import BIOMV210Format
 
-skbio_methods = ["bray_curtis", "jaccard"]
-unifrac_methods = ["unweighted_unifrac", "weighted_unifrac",
-                   "faith_pd"]
-
 
 def _drop_undefined_samples(counts: np.ndarray, sample_ids: np.ndarray,
                             minimum_nonzero_elements: int) -> (np.ndarray,
                                                                np.ndarray):
-    nonzero_elements_per_sample = (counts != 0).sum(1)
+    nonzero_elements_per_sample = (counts != 0).sum(axis=1)
     fancy_index = np.where(
             nonzero_elements_per_sample < minimum_nonzero_elements)
-    filtered_counts = np.delete(counts, fancy_index, 0)
+    filtered_counts = np.delete(counts, fancy_index, axis=0)
     filtered_sample_ids = np.delete(sample_ids, fancy_index)
     return (filtered_counts, filtered_sample_ids)
 

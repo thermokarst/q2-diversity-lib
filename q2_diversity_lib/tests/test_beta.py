@@ -13,10 +13,11 @@ import skbio
 from qiime2.plugin.testing import TestPluginBase
 from q2_types.feature_table import BIOMV210Format
 from q2_types.tree import NewickFormat
-from q2_diversity_lib import (
-        bray_curtis, jaccard, unweighted_unifrac, weighted_unifrac)
-
 from qiime2 import Artifact
+
+from ..beta import (bray_curtis, jaccard, unweighted_unifrac,
+                    weighted_unifrac, METRICS)
+
 
 nonphylogenetic_measures = [bray_curtis, jaccard]
 phylogenetic_measures = [unweighted_unifrac, weighted_unifrac]
@@ -308,8 +309,8 @@ class WeightedUnifrac(TestPluginBase):
         self.tree_as_NewickFormat = NewickFormat(tree_fp, mode='r')
 
     def test_method(self):
-        actual = weighted_unifrac(self.table_as_BIOMV210Format,
-                                  self.tree_as_NewickFormat)
+        actual = weighted_unifrac(
+            self.table_as_BIOMV210Format, self.tree_as_NewickFormat)
         self.assertEqual(actual.ids, self.expected.ids)
         for id1 in actual.ids:
             for id2 in actual.ids:
@@ -321,10 +322,150 @@ class WeightedUnifrac(TestPluginBase):
         rel_freq_table = self.rf_table_as_BIOMV210Format
         accepted_tables = [freq_table, rel_freq_table]
         for table in accepted_tables:
-            actual = weighted_unifrac(table=table,
-                                      phylogeny=self.tree_as_NewickFormat)
+            actual = weighted_unifrac(
+                table=table, phylogeny=self.tree_as_NewickFormat)
             self.assertEqual(actual.ids, self.expected.ids)
             for id1 in actual.ids:
                 for id2 in actual.ids:
                     npt.assert_almost_equal(actual[id1, id2],
                                             self.expected[id1, id2])
+
+
+class BetaPassthroughTests(TestPluginBase):
+    package = 'q2_diversity_lib.tests'
+
+    def setUp(self):
+        super().setUp()
+        self.method = self.plugin.actions['beta_passthrough']
+        empty_table = biom.Table(np.array([]), [], [])
+        self.empty_table = Artifact.import_data('FeatureTable[Frequency]',
+                                                empty_table)
+        crawford_tbl = self.get_data_path('crawford.biom')
+        self.crawford_tbl = Artifact.import_data('FeatureTable[Frequency]',
+                                                 crawford_tbl)
+        table = biom.Table(np.array([[0, 1, 3], [1, 1, 2]]),
+                           ['O1', 'O2'],
+                           ['S1', 'S2', 'S3'])
+        self.table = Artifact.import_data('FeatureTable[Frequency]', table)
+
+    def test_method(self):
+        for metric in METRICS['NONPHYLO']['UNIMPL']:
+            self.method(table=self.crawford_tbl, metric=metric)
+        # If we get here, then our methods ran without error
+        self.assertTrue(True)
+
+    def test_passed_empty_table(self):
+        for metric in METRICS['NONPHYLO']['UNIMPL']:
+            with self.assertRaisesRegex(ValueError, 'empty'):
+                self.method(table=self.empty_table, metric=metric)
+
+    def test_passed_bad_metric(self):
+        with self.assertRaisesRegex(TypeError,
+                                    'imaginary_metric.*incompatible'):
+            self.method(table=self.crawford_tbl, metric='imaginary_metric')
+
+    def test_passed_implemented_metric(self):
+        # beta_passthrough does not provide access to measures that have been
+        # implemented locally
+        for metric in METRICS['NONPHYLO']['IMPL']:
+            with self.assertRaisesRegex(TypeError, f"{metric}.*incompatible"):
+                self.method(table=self.crawford_tbl, metric=metric)
+
+    def test_aitchison(self):
+        actual, = self.method(table=self.table, metric='aitchison')
+        actual = actual.view(skbio.DistanceMatrix)
+        expected = skbio.DistanceMatrix([[0.0000000, 0.4901290, 0.6935510],
+                                         [0.4901290, 0.0000000, 0.2034219],
+                                         [0.6935510, 0.2034219, 0.0000000]],
+                                        ids=['S1', 'S2', 'S3'])
+
+        self.assertEqual(actual.ids, expected.ids)
+        for id1 in actual.ids:
+            for id2 in actual.ids:
+                npt.assert_almost_equal(actual[id1, id2], expected[id1, id2])
+
+    def test_canberra_adkins(self):
+        t = biom.Table(np.array([[0, 0], [0, 1], [1, 2]]),
+                       ['O1', 'O2', 'O3'],
+                       ['S1', 'S2'])
+        t = Artifact.import_data('FeatureTable[Frequency]', t)
+        # expected calculated by hand
+        expected = skbio.DistanceMatrix(np.array([[0.0, 0.66666666666],
+                                                  [0.66666666666, 0.0]]),
+                                        ids=['S1', 'S2'])
+        actual, = self.method(table=t, metric='canberra_adkins')
+        actual = actual.view(skbio.DistanceMatrix)
+
+        self.assertEqual(actual.ids, expected.ids)
+        for id1 in actual.ids:
+            for id2 in actual.ids:
+                npt.assert_almost_equal(actual[id1, id2], expected[id1, id2])
+
+    def test_beta_canberra_adkins_negative_values(self):
+        t = biom.Table(np.array([[0, 0], [0, 1], [-1, -2]]),
+                       ['O1', 'O2', 'O3'],
+                       ['S1', 'S2'])
+        t = Artifact.import_data('FeatureTable[Frequency]', t)
+
+        with self.assertRaisesRegex(ValueError, 'cannot.*negative values'):
+            self.method(table=t, metric='canberra_adkins')
+
+    def test_jensenshannon(self):
+        # expected computed with scipy.spatial.distance.jensenshannon
+        expected = skbio.DistanceMatrix([[0.0000000, 0.4645014, 0.52379239],
+                                         [0.4645014, 0.0000000, 0.07112939],
+                                         [0.52379239, 0.07112939, 0.0000000]],
+                                        ids=['S1', 'S2', 'S3'])
+
+        actual, = self.method(table=self.table, metric='jensenshannon')
+        actual = actual.view(skbio.DistanceMatrix)
+        self.assertEqual(actual.ids, expected.ids)
+        for id1 in actual.ids:
+            for id2 in actual.ids:
+                npt.assert_almost_equal(actual[id1, id2], expected[id1, id2])
+
+
+class BetaPhylogeneticPassthroughTests(TestPluginBase):
+    package = 'q2_diversity_lib.tests'
+
+    def setUp(self):
+        super().setUp()
+        self.method = self.plugin.actions['beta_phylogenetic_passthrough']
+        empty_table = biom.Table(np.array([]), [], [])
+        self.empty_table = Artifact.import_data('FeatureTable[Frequency]',
+                                                empty_table)
+        crawford_tbl = self.get_data_path('crawford.biom')
+        self.crawford_tbl = Artifact.import_data('FeatureTable[Frequency]',
+                                                 crawford_tbl)
+        crawford_tree = self.get_data_path('crawford.nwk')
+        self.crawford_tree = Artifact.import_data('Phylogeny[Rooted]',
+                                                  crawford_tree)
+
+    def test_method(self):
+        for metric in METRICS['PHYLO']['UNIMPL']:
+            self.method(table=self.crawford_tbl,
+                        phylogeny=self.crawford_tree, metric=metric)
+        # If we get here, then our methods ran without error
+        self.assertTrue(True)
+
+    def test_passed_empty_table(self):
+        for metric in METRICS['PHYLO']['UNIMPL']:
+            with self.assertRaisesRegex(ValueError, 'empty'):
+                self.method(table=self.empty_table,
+                            phylogeny=self.crawford_tree, metric=metric)
+
+    def test_passed_bad_metric(self):
+        with self.assertRaisesRegex(TypeError,
+                                    'imaginary_metric.*incompatible'):
+            self.method(table=self.crawford_tbl,
+                        phylogeny=self.crawford_tree,
+                        metric='imaginary_metric')
+
+    def test_beta_phylogenetic_alpha_on_non_generalized(self):
+        with self.assertRaisesRegex(ValueError, 'The alpha parameter is only '
+                                    'allowed when the selected metric is '
+                                    '\'generalized_unifrac\''):
+            self.method(table=self.crawford_tbl,
+                        phylogeny=self.crawford_tree,
+                        metric='unweighted_unifrac',
+                        alpha=0.11)

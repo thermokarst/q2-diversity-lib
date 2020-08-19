@@ -14,11 +14,10 @@ import biom
 from qiime2.plugin.testing import TestPluginBase
 from q2_types.feature_table import BIOMV210Format
 from q2_types.tree import NewickFormat
-from q2_diversity_lib import (faith_pd, pielou_evenness, observed_features,
-                              shannon_entropy)
+from qiime2 import Artifact
 
-nonphylogenetic_measures = [observed_features, pielou_evenness,
-                            shannon_entropy]
+from ..alpha import (faith_pd, pielou_evenness, observed_features,
+                     shannon_entropy, METRICS)
 
 
 class SmokeTests(TestPluginBase):
@@ -26,12 +25,15 @@ class SmokeTests(TestPluginBase):
 
     def setUp(self):
         super().setUp()
-        self.empty_table = biom.Table(np.array([]), [], [])
+        empty_table = biom.Table(np.array([]), [], [])
+        self.empty_table = Artifact.import_data('FeatureTable[Frequency]',
+                                                empty_table)
 
     def test_non_phylogenetic_passed_empty_table(self):
-        for measure in nonphylogenetic_measures:
+        for metric in METRICS['NONPHYLO']['IMPL']:
+            metric = METRICS['NAME_TRANSLATIONS'][metric]
             with self.assertRaisesRegex(ValueError, 'empty'):
-                measure(table=self.empty_table)
+                self.plugin.actions[metric](table=self.empty_table)
 
 
 class FaithPDTests(TestPluginBase):
@@ -234,3 +236,41 @@ class ShannonEntropyTests(TestPluginBase):
         actual = shannon_entropy(table=self.input_table,
                                  drop_undefined_samples=False)
         pdt.assert_series_equal(actual, self.expected)
+
+
+class AlphaPassthroughTests(TestPluginBase):
+    package = 'q2_diversity_lib.tests'
+
+    def setUp(self):
+        super().setUp()
+        self.method = self.plugin.actions['alpha_passthrough']
+        empty_table = biom.Table(np.array([]), [], [])
+        self.empty_table = Artifact.import_data('FeatureTable[Frequency]',
+                                                empty_table)
+        crawford_tbl = self.get_data_path('crawford.biom')
+        self.crawford_tbl = Artifact.import_data('FeatureTable[Frequency]',
+                                                 crawford_tbl)
+
+    def test_method(self):
+        for metric in METRICS['NONPHYLO']['UNIMPL']:
+            # NOTE: crawford table used b/c input_table too minimal for `ace`
+            self.method(table=self.crawford_tbl, metric=metric)
+        # If we get here, then our methods ran without error
+        self.assertTrue(True)
+
+    def test_passed_empty_table(self):
+        for metric in METRICS['NONPHYLO']['UNIMPL']:
+            with self.assertRaisesRegex(ValueError, 'empty'):
+                self.method(table=self.empty_table, metric=metric)
+
+    def test_passed_bad_metric(self):
+        with self.assertRaisesRegex(TypeError,
+                                    'imaginary_metric.*incompatible'):
+            self.method(table=self.crawford_tbl, metric='imaginary_metric')
+
+    def test_passed_implemented_metric(self):
+        # alpha_passthrough does not provide access to measures that have been
+        # implemented locally
+        for metric in METRICS['NONPHYLO']['IMPL']:
+            with self.assertRaisesRegex(TypeError, f"{metric}.*incompatible"):
+                self.method(table=self.crawford_tbl, metric=metric)
